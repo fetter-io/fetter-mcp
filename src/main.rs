@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -47,6 +46,12 @@ pub struct FetterMcpServer {
     tool_router: ToolRouter<Self>,
 }
 
+impl Default for FetterMcpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tool_router]
 impl FetterMcpServer {
     pub fn new() -> Self {
@@ -82,7 +87,7 @@ impl FetterMcpServer {
         let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
             let client = Arc::new(UreqClientLive);
             let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
-            let cache_dir = path_cache(true).unwrap_or_else(|| std::env::temp_dir());
+            let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
             let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
 
             let lr = LookupReport::from_dep_spec(
@@ -97,7 +102,7 @@ impl FetterMcpServer {
             )
             .map_err(|e| e.to_string())?;
 
-            serde_json::to_string_pretty(&lr).map_err(|e| e.to_string())
+            serde_json::to_string(&lr).map_err(|e| e.to_string())
         })
         .await;
 
@@ -119,38 +124,30 @@ impl ServerHandler for FetterMcpServer {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some(
-                "Fetter MCP Server - Query package vulnerability information.\n\
-                 Use the lookup_name tool to search for packages."
-                    .to_string(),
-            ),
+            instructions: Some("Fetter MCP Server".to_string()),
         }
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        async move {
-            Ok(ListToolsResult {
-                tools: self.tool_router.list_all(),
-                next_cursor: None,
-                meta: None,
-            })
-        }
+    ) -> Result<ListToolsResult, McpError> {
+        Ok(ListToolsResult {
+            tools: self.tool_router.list_all(),
+            next_cursor: None,
+            meta: None,
+        })
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
-        async move {
-            self.tool_router
-                .call(ToolCallContext::new(self, request, context))
-                .await
-        }
+    ) -> Result<CallToolResult, McpError> {
+        self.tool_router
+            .call(ToolCallContext::new(self, request, context))
+            .await
     }
 }
 
