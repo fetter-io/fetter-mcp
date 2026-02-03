@@ -12,10 +12,10 @@ use rmcp::{
         StreamableHttpService, session::local::LocalSessionManager,
     },
 };
+use std::net::SocketAddr;
+
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-const BIND_ADDRESS: &str = "0.0.0.0:8000";
 
 // -----------------------------------------------------------------------------
 // Tool Arguments
@@ -123,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting Fetter MCP Server on {}", BIND_ADDRESS);
+    tracing::info!("Starting Fetter MCP Server");
 
     let service = StreamableHttpService::new(
         || Ok(FetterMcpServer::new()),
@@ -133,8 +133,8 @@ async fn main() -> anyhow::Result<()> {
 
     let router = axum::Router::new().nest_service("/mcp", service);
 
-    let listener = tokio::net::TcpListener::bind(BIND_ADDRESS).await?;
-    tracing::info!("Server ready at http://{}/mcp", BIND_ADDRESS);
+    let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
