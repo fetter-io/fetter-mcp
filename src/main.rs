@@ -5,10 +5,11 @@ use rmcp::{
     handler::server::tool::{ToolCallContext, ToolRouter},
     handler::server::wrapper::Parameters,
     model::*,
-    schemars, tool, tool_router,
+    schemars,
     service::RequestContext,
+    tool, tool_router,
     transport::streamable_http_server::{
-        session::local::LocalSessionManager, StreamableHttpService,
+        StreamableHttpService, session::local::LocalSessionManager,
     },
 };
 use serde::Deserialize;
@@ -16,7 +17,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const BIND_ADDRESS: &str = "0.0.0.0:8000";
 
-// ============================================================================
+// -----------------------------------------------------------------------------
 // Tool Arguments
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -25,7 +26,7 @@ pub struct LookupNameArgs {
     pub name: String,
 }
 
-// ============================================================================
+// -----------------------------------------------------------------------------
 // MCP Server
 
 #[derive(Clone)]
@@ -74,9 +75,7 @@ impl ServerHandler for FetterMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Fetter MCP Server - Query package vulnerability information.\n\
@@ -113,12 +112,9 @@ impl ServerHandler for FetterMcpServer {
     }
 }
 
-// ============================================================================
-// Main
-
+// -----------------------------------------------------------------------------
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -151,4 +147,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
