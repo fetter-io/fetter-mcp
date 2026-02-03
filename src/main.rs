@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fetter::{
-    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing,
-    LookupReport, UreqClientLive, path_cache,
+    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing, LookupReport,
+    UreqClientLive, path_cache,
 };
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
@@ -103,12 +103,12 @@ impl FetterMcpServer {
 
         match result {
             Ok(Ok(json)) => Ok(CallToolResult::success(vec![Content::text(json)])),
-            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(
-                format!("Lookup failed: {e}"),
-            )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(
-                format!("Task failed: {e}"),
-            )])),
+            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Lookup failed: {e}"
+            ))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Task failed: {e}"
+            ))])),
         }
     }
 }
