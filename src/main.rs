@@ -1,5 +1,11 @@
 use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
 
+use fetter::{
+    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing,
+    LookupReport, UreqClientLive, path_cache,
+};
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::tool::{ToolCallContext, ToolRouter},
@@ -22,8 +28,15 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LookupNameArgs {
-    /// The package name to look up (e.g., "requests", "numpy", "lodash")
+    /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0")
     pub name: String,
+    /// Maximum number of versions to check (default: 5)
+    pub limit: Option<usize>,
+    /// CVSS score filter: "all" to show all vulnerabilities, "max" to show only the
+    /// maximum observed score, or a number (0.0-10.0) to filter by threshold
+    pub cvss_filter: Option<String>,
+    /// Whether to include packages with no vulnerabilities in results (default: false)
+    pub retain_passing: Option<bool>,
 }
 
 // -----------------------------------------------------------------------------
@@ -48,7 +61,17 @@ impl FetterMcpServer {
         &self,
         Parameters(args): Parameters<LookupNameArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let name = args.name.trim();
+        let name = args.name.trim().to_string();
+        let limit = args.limit.or(Some(5));
+        let retain_passing = args.retain_passing.unwrap_or(false);
+        let cvss_filter = match args.cvss_filter.as_deref() {
+            Some("max") => CvssFilter::MaxOnly,
+            Some(s) => match s.parse::<f64>() {
+                Ok(v) if (0.0..=10.0).contains(&v) => CvssFilter::Threshold(v),
+                _ => CvssFilter::All,
+            },
+            None => CvssFilter::All,
+        };
 
         if name.is_empty() {
             return Ok(CallToolResult::error(vec![Content::text(
@@ -56,18 +79,37 @@ impl FetterMcpServer {
             )]));
         }
 
-        // TODO: Replace with actual fetter lookup logic
-        // For now, return a stub response
-        let response = serde_json::json!({
-            "name": name,
-            "found": true,
-            "description": format!("Package '{}' lookup placeholder", name),
-            "message": "This is a stub response. Implement actual fetter lookup here."
-        });
+        let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
+            let client = Arc::new(UreqClientLive);
+            let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
+            let cache_dir = path_cache(true).unwrap_or_else(|| std::env::temp_dir());
+            let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
 
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&response).unwrap_or_else(|_| response.to_string()),
-        )]))
+            let lr = LookupReport::from_dep_spec(
+                client,
+                &ds,
+                limit,
+                &cache_config,
+                FlagCacheRefresh(false),
+                FlagLog(false),
+                cvss_filter,
+                FlagRetainPassing(retain_passing),
+            )
+            .map_err(|e| e.to_string())?;
+
+            serde_json::to_string_pretty(&lr).map_err(|e| e.to_string())
+        })
+        .await;
+
+        match result {
+            Ok(Ok(json)) => Ok(CallToolResult::success(vec![Content::text(json)])),
+            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(
+                format!("Lookup failed: {e}"),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                format!("Task failed: {e}"),
+            )])),
+        }
     }
 }
 
