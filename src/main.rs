@@ -42,12 +42,6 @@ pub struct LookupNameArgs {
 // -----------------------------------------------------------------------------
 // Summary types for clean MCP output
 
-#[derive(Serialize)]
-struct LookupSummary {
-    package: String,
-    versions: Vec<VersionSummary>,
-}
-
 #[derive(Clone, Serialize)]
 struct VulnSummary {
     id: String,
@@ -64,7 +58,11 @@ struct VersionSummary {
     vulnerabilities: Vec<VulnSummary>,
 }
 
-
+#[derive(Serialize)]
+struct LookupSummary {
+    package: String,
+    versions: Vec<VersionSummary>,
+}
 
 fn summarize(lr: &LookupReport) -> LookupSummary {
     let records = lr.get_records();
