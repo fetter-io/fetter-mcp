@@ -147,7 +147,9 @@ impl FetterMcpServer {
         &self,
         Parameters(args): Parameters<LookupNameArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // TODO: this string should be sanatized
         let name = args.name.trim().to_string();
+
         let limit = args.limit.or(Some(5));
         let retain_passing = args.retain_passing.unwrap_or(false);
         let cvss_filter = match args.cvss_filter.as_deref() {
