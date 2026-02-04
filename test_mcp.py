@@ -36,7 +36,7 @@ def send(method, params=None, is_notification=False):
     data = json.dumps(body).encode()
     req = urllib.request.Request(BASE_URL, data=data, headers=headers)
 
-    print(f">>> {method}", json.dumps(params) if params else "")
+    # print(f">>> {method}", json.dumps(params) if params else "")
 
     try:
         with urllib.request.urlopen(req) as resp:
@@ -50,8 +50,8 @@ def send(method, params=None, is_notification=False):
             raw = resp.read().decode()
 
             if not raw.strip():
-                if is_notification:
-                    print("(accepted)")
+                # if is_notification:
+                #     print("(accepted)")
                 return
 
             if "text/event-stream" in content_type:
@@ -89,7 +89,7 @@ def init_session():
 def call_tool(name, arguments):
     """Initialize session, list tools, and call the named tool."""
     init_session()
-    send("tools/list")
+    # send("tools/list")
     send("tools/call", {"name": name, "arguments": arguments})
 
 

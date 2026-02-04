@@ -167,7 +167,7 @@ impl FetterMcpServer {
             )]));
         }
 
-        let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
             let client = Arc::new(UreqClientLive);
             let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
             let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
@@ -186,12 +186,17 @@ impl FetterMcpServer {
             .map_err(|e| e.to_string())?;
 
             let summary = summarize(&lr);
-            serde_json::to_string(&summary).map_err(|e| e.to_string())
+            serde_json::to_value(&summary).map_err(|e| e.to_string())
         })
         .await;
 
         match result {
-            Ok(Ok(json)) => Ok(CallToolResult::success(vec![Content::text(json)])),
+            Ok(Ok(value)) => Ok(CallToolResult {
+                content: vec![],
+                structured_content: Some(value),
+                is_error: Some(false),
+                meta: None,
+            }),
             Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Lookup failed: {e}"
             ))])),
