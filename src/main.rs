@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use fetter::{
     CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing, LookupReport,
-    UreqClientLive, path_cache,
+    Tableable, UreqClientLive, path_cache,
 };
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
@@ -19,7 +20,7 @@ use rmcp::{
 };
 use std::net::SocketAddr;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // -----------------------------------------------------------------------------
@@ -36,6 +37,88 @@ pub struct LookupNameArgs {
     pub cvss_filter: Option<String>,
     /// Whether to include packages with no vulnerabilities in results (default: false)
     pub retain_passing: Option<bool>,
+}
+
+// -----------------------------------------------------------------------------
+// Summary types for clean MCP output
+
+#[derive(Serialize)]
+struct LookupSummary {
+    package: String,
+    versions: Vec<VersionSummary>,
+}
+
+#[derive(Clone, Serialize)]
+struct VulnSummary {
+    id: String,
+    summary: String,
+    cvss_score: Option<f64>,
+    severity: Option<String>,
+    url: String,
+}
+
+#[derive(Serialize)]
+struct VersionSummary {
+    version: String,
+    vulnerable: bool,
+    vulnerabilities: Vec<VulnSummary>,
+}
+
+
+
+fn summarize(lr: &LookupReport) -> LookupSummary {
+    let records = lr.get_records();
+
+    let package = records
+        .first()
+        .map(|r| r.package.name.clone())
+        .unwrap_or_default();
+
+    // Deduplicate vuln details across records
+    let mut vuln_cache: HashMap<String, VulnSummary> = HashMap::new();
+
+    for record in records {
+        for (vuln_id, info) in &record.vuln_infos {
+            vuln_cache.entry(vuln_id.clone()).or_insert_with(|| {
+                let (cvss_score, severity) = info
+                    .cvss_details
+                    .as_ref()
+                    .and_then(|d| d.get_max_score().map(|s| (s, d.get_prime())))
+                    .map(|(score, prime)| {
+                        let sev = prime.split_whitespace().nth(2).unwrap_or("").to_string();
+                        (Some(score), if sev.is_empty() { None } else { Some(sev) })
+                    })
+                    .unwrap_or((None, None));
+
+                VulnSummary {
+                    id: vuln_id.clone(),
+                    summary: info.summary.clone().unwrap_or_default(),
+                    cvss_score,
+                    severity,
+                    url: info.get_url(),
+                }
+            });
+        }
+    }
+
+    let versions = records
+        .iter()
+        .map(|record| {
+            let vulns: Vec<VulnSummary> = record
+                .vuln_ids
+                .iter()
+                .filter_map(|id| vuln_cache.get(id).cloned())
+                .collect();
+
+            VersionSummary {
+                version: record.package.version.to_string(),
+                vulnerable: !vulns.is_empty(),
+                vulnerabilities: vulns,
+            }
+        })
+        .collect();
+
+    LookupSummary { package, versions }
 }
 
 // -----------------------------------------------------------------------------
@@ -102,7 +185,8 @@ impl FetterMcpServer {
             )
             .map_err(|e| e.to_string())?;
 
-            serde_json::to_string(&lr).map_err(|e| e.to_string())
+            let summary = summarize(&lr);
+            serde_json::to_string(&summary).map_err(|e| e.to_string())
         })
         .await;
 
