@@ -28,14 +28,14 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LookupNameArgs {
-    /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0")
+    /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). Note that when an exact "==" version is specified, the `limit` and `retain_passing` parameters have no effect.
     pub name: String,
-    /// Maximum number of versions to check (default: 5)
+    /// When the name is not an exact version, limit the number of recent versions to check.
     pub limit: Option<usize>,
     /// CVSS score filter: "all" to show all vulnerabilities, "max" to show only the
     /// maximum observed score, or a number (0.0-10.0) to filter by threshold
     pub cvss_filter: Option<String>,
-    /// Whether to include packages with no vulnerabilities in results (default: false)
+    /// 'When the name is not an exact version, setting this to True will return refernces for all packages, include those with no vulnerabilities (default: false)
     pub retain_passing: Option<bool>,
 }
 
@@ -142,7 +142,7 @@ impl FetterMcpServer {
     }
 
     /// Look up a package by name and return basic information
-    #[tool(description = "Look up a package by name to get basic information about it")]
+    #[tool(description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities.")]
     async fn lookup_name(
         &self,
         Parameters(args): Parameters<LookupNameArgs>,
@@ -150,8 +150,9 @@ impl FetterMcpServer {
         // TODO: this string should be sanatized
         let name = args.name.trim().to_string();
 
-        let limit = args.limit.or(Some(5));
+        let limit = args.limit.or(None);
         let retain_passing = args.retain_passing.unwrap_or(false);
+
         let cvss_filter = match args.cvss_filter.as_deref() {
             Some("max") => CvssFilter::MaxOnly,
             Some(s) => match s.parse::<f64>() {
