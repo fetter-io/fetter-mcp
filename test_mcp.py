@@ -104,6 +104,10 @@ def cmd_lookup_name(args):
     call_tool("lookup_name", arguments)
 
 
+def cmd_most_recent_not_vulnerable(args):
+    call_tool("most_recent_not_vulnerable", {"name": args.name})
+
+
 def main():
     parser = argparse.ArgumentParser(description="Test client for the Fetter MCP server")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -117,6 +121,12 @@ def main():
     p_lookup.add_argument("--retain_passing", action="store_true",
                           help="Include packages with no vulnerabilities")
     p_lookup.set_defaults(func=cmd_lookup_name)
+
+    # most_recent_not_vulnerable
+    p_safe = sub.add_parser("most_recent_not_vulnerable",
+                            help="Find the most recent version without vulnerabilities")
+    p_safe.add_argument("name", help="Package name (e.g. 'requests', 'numpy')")
+    p_safe.set_defaults(func=cmd_most_recent_not_vulnerable)
 
     args = parser.parse_args()
     args.func(args)
