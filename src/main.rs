@@ -49,12 +49,12 @@ where
     D: Deserializer<'de>,
 {
     let opt: Option<String> = Option::deserialize(deserializer)?;
-    if let Some(ref s) = opt {
-        if s.len() > MAX_FILTER_LEN {
-            return Err(serde::de::Error::custom(format!(
-                "cvss_filter exceeds {MAX_FILTER_LEN} characters"
-            )));
-        }
+    if let Some(ref s) = opt
+        && s.len() > MAX_FILTER_LEN
+    {
+        return Err(serde::de::Error::custom(format!(
+            "cvss_filter exceeds {MAX_FILTER_LEN} characters"
+        )));
     }
     Ok(opt)
 }
