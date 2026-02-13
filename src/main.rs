@@ -39,7 +39,7 @@ pub struct IsVulnerableArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct LookupNameArgs {
+pub struct LookupArgs {
     /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). Note that when an exact "==" version is specified, the `limit` and `retain_passing` parameters have no effect.
     pub name: String,
     /// When the name is not an exact version, limit the number of recent versions to check.
@@ -79,6 +79,7 @@ struct LookupSummary {
 fn summarize(lr: &LookupReport) -> LookupSummary {
     let records = lr.get_records();
 
+    // We strongly assume that this report is only for one package; while this report can handle multiple packages, as used here it will only get requests for a single package
     let package = records
         .first()
         .map(|r| r.package.name.clone())
@@ -157,9 +158,9 @@ impl FetterMcpServer {
     #[tool(
         description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities."
     )]
-    async fn lookup_name(
+    async fn lookup(
         &self,
-        Parameters(args): Parameters<LookupNameArgs>,
+        Parameters(args): Parameters<LookupArgs>,
     ) -> Result<CallToolResult, McpError> {
         // TODO: this string should be sanatized
         let name = args.name.trim().to_string();
@@ -268,6 +269,7 @@ impl FetterMcpServer {
                     "package": summary.package,
                     "version": v.version,
                     "vulnerable": false,
+                    "vulnerabilities": [],
                 }))
                 .map_err(|e| e.to_string()),
                 None => Err(format!(

@@ -101,7 +101,7 @@ def cmd_lookup_name(args):
         arguments["cvss_filter"] = args.cvss_filter
     if args.retain_passing:
         arguments["retain_passing"] = True
-    call_tool("lookup_name", arguments)
+    call_tool("lookup", arguments)
 
 
 def cmd_most_recent_not_vulnerable(args):
@@ -116,8 +116,8 @@ def main():
     parser = argparse.ArgumentParser(description="Test client for the Fetter MCP server")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # lookup_name
-    p_lookup = sub.add_parser("lookup_name", help="Look up a package by name")
+    # lookup
+    p_lookup = sub.add_parser("lookup", help="Look up a package by name")
     p_lookup.add_argument("name", help="Package spec (e.g. 'requests', 'numpy>=2.0')")
     p_lookup.add_argument("--limit", type=int, default=None, help="Max versions to check")
     p_lookup.add_argument("--cvss_filter", default=None,
