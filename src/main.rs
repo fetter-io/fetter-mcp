@@ -4,10 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fetter::{
-    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing,
-    LookupReport, UreqClientLive, path_cache,
+    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing, LookupReport,
+    UreqClientLive, path_cache,
 };
-use summary::summarize;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::tool::{ToolCallContext, ToolRouter},
@@ -21,6 +20,7 @@ use rmcp::{
     },
 };
 use std::net::SocketAddr;
+use summary::summarize;
 
 use serde::{Deserialize, Deserializer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
