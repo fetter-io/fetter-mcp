@@ -108,6 +108,10 @@ def cmd_most_recent_not_vulnerable(args):
     call_tool("most_recent_not_vulnerable", {"name": args.name})
 
 
+def cmd_is_vulnerable(args):
+    call_tool("is_vulnerable", {"name": args.name})
+
+
 def main():
     parser = argparse.ArgumentParser(description="Test client for the Fetter MCP server")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -127,6 +131,12 @@ def main():
                             help="Find the most recent version without vulnerabilities")
     p_safe.add_argument("name", help="Package name (e.g. 'requests', 'numpy')")
     p_safe.set_defaults(func=cmd_most_recent_not_vulnerable)
+
+    # is_vulnerable
+    p_vuln = sub.add_parser("is_vulnerable",
+                            help="Check if a specific version has vulnerabilities")
+    p_vuln.add_argument("name", help="Exact package version (e.g. 'requests==2.31.0')")
+    p_vuln.set_defaults(func=cmd_is_vulnerable)
 
     args = parser.parse_args()
     args.func(args)

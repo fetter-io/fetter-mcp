@@ -33,6 +33,12 @@ pub struct MostRecentNotVulnerableArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct IsVulnerableArgs {
+    /// The exact package name and version (e.g., "requests==2.31.0", "numpy==1.24.0").
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LookupNameArgs {
     /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). Note that when an exact "==" version is specified, the `limit` and `retain_passing` parameters have no effect.
     pub name: String,
@@ -258,7 +264,7 @@ impl FetterMcpServer {
             let safe_version = summary.versions.iter().find(|v| !v.vulnerable);
 
             match safe_version {
-                Some(v) => serde_json::to_value(&serde_json::json!({
+                Some(v) => serde_json::to_value(serde_json::json!({
                     "package": summary.package,
                     "version": v.version,
                     "vulnerable": false,
@@ -268,6 +274,76 @@ impl FetterMcpServer {
                     "No recent version of '{}' found without vulnerabilities",
                     summary.package
                 )),
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(value)) => Ok(CallToolResult {
+                content: vec![],
+                structured_content: Some(value),
+                is_error: Some(false),
+                meta: None,
+            }),
+            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Lookup failed: {e}"
+            ))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Task failed: {e}"
+            ))])),
+        }
+    }
+
+    /// Check if a specific package version has known vulnerabilities
+    #[tool(
+        description = "Check if a specific package version has known vulnerabilities. Requires an exact version specifier (e.g., 'requests==2.31.0')."
+    )]
+    async fn is_vulnerable(
+        &self,
+        Parameters(args): Parameters<IsVulnerableArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let name = args.name.trim().to_string();
+
+        if name.is_empty() {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Package name cannot be empty",
+            )]));
+        }
+
+        let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+            let client = Arc::new(UreqClientLive);
+            let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
+
+            if ds.get_exact().is_none() {
+                return Err("Exact version required (e.g., 'requests==2.31.0')".to_string());
+            }
+
+            let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
+            let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
+
+            let lr = LookupReport::from_dep_spec(
+                client,
+                &ds,
+                Some(1),
+                &cache_config,
+                FlagCacheRefresh(false),
+                FlagLog(false),
+                CvssFilter::All,
+                FlagRetainPassing(true),
+            )
+            .map_err(|e| e.to_string())?;
+
+            let summary = summarize(&lr);
+
+            match summary.versions.first() {
+                Some(v) => serde_json::to_value(serde_json::json!({
+                    "package": summary.package,
+                    "version": v.version,
+                    "vulnerable": v.vulnerable,
+                    "vulnerabilities": v.vulnerabilities,
+                }))
+                .map_err(|e| e.to_string()),
+                None => Err(format!("Version not found for '{}'", name)),
             }
         })
         .await;
