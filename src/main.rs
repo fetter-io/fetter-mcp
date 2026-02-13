@@ -148,7 +148,9 @@ impl FetterMcpServer {
     }
 
     /// Look up a package by name and return basic information
-    #[tool(description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities.")]
+    #[tool(
+        description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities."
+    )]
     async fn lookup_name(
         &self,
         Parameters(args): Parameters<LookupNameArgs>,
@@ -214,7 +216,9 @@ impl FetterMcpServer {
     }
 
     /// Find the most recent version of a package that has no known vulnerabilities
-    #[tool(description = "Find the most recent version of a package that has no known vulnerabilities.")]
+    #[tool(
+        description = "Find the most recent version of a package that has no known vulnerabilities."
+    )]
     async fn most_recent_not_vulnerable(
         &self,
         Parameters(args): Parameters<MostRecentNotVulnerableArgs>,
@@ -231,10 +235,7 @@ impl FetterMcpServer {
             let client = Arc::new(UreqClientLive);
             let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
             if ds.get_exact().is_some() {
-                return Err(
-                    "An exact version is not supported for this tool; provide only a package name"
-                        .to_string(),
-                );
+                return Err("Provide only a package name, not specific version.".to_string());
             }
             let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
             let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
@@ -254,10 +255,7 @@ impl FetterMcpServer {
             let summary = summarize(&lr);
 
             // Find the first version that is not vulnerable
-            let safe_version = summary
-                .versions
-                .iter()
-                .find(|v| !v.vulnerable);
+            let safe_version = summary.versions.iter().find(|v| !v.vulnerable);
 
             match safe_version {
                 Some(v) => serde_json::to_value(&serde_json::json!({
