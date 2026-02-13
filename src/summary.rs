@@ -106,7 +106,10 @@ mod tests {
         mock_get_map.insert("https://api.osv.dev".to_string(), osv_vuln_json.to_string());
 
         let mut mock_post_map = HashMap::new();
-        mock_post_map.insert("https://api.osv.dev".to_string(), osv_batch_json.to_string());
+        mock_post_map.insert(
+            "https://api.osv.dev".to_string(),
+            osv_batch_json.to_string(),
+        );
 
         let client = Arc::new(UreqClientMock {
             mock_get: Some(mock_get_map),
@@ -136,7 +139,13 @@ mod tests {
         let osv_batch_json = r#"{"results":[{"vulns":null}]}"#;
         let osv_vuln_json = r#"{}"#;
 
-        let lr = make_lookup_report(pypi_json, osv_batch_json, osv_vuln_json, "safepkg>=1.0.0", true);
+        let lr = make_lookup_report(
+            pypi_json,
+            osv_batch_json,
+            osv_vuln_json,
+            "safepkg>=1.0.0",
+            true,
+        );
         let summary = summarize(&lr);
 
         assert_eq!(summary.package, "safepkg");
@@ -152,7 +161,13 @@ mod tests {
         let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-test-1234","modified":"2024-01-01T00:00:00Z"}]}]}"#;
         let osv_vuln_json = r#"{"id":"GHSA-test-1234","summary":"Test vulnerability","references":[{"type":"ADVISORY","url":"https://example.com"}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}]}"#;
 
-        let lr = make_lookup_report(pypi_json, osv_batch_json, osv_vuln_json, "vulnpkg>=2.0.0", false);
+        let lr = make_lookup_report(
+            pypi_json,
+            osv_batch_json,
+            osv_vuln_json,
+            "vulnpkg>=2.0.0",
+            false,
+        );
         let summary = summarize(&lr);
 
         assert_eq!(summary.package, "vulnpkg");
@@ -160,7 +175,10 @@ mod tests {
         assert!(summary.versions[0].vulnerable);
         assert_eq!(summary.versions[0].vulnerabilities.len(), 1);
         assert_eq!(summary.versions[0].vulnerabilities[0].id, "GHSA-test-1234");
-        assert_eq!(summary.versions[0].vulnerabilities[0].summary, "Test vulnerability");
+        assert_eq!(
+            summary.versions[0].vulnerabilities[0].summary,
+            "Test vulnerability"
+        );
     }
 
     #[test]
@@ -170,7 +188,13 @@ mod tests {
         let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-mix-1234","modified":"2024-01-01T00:00:00Z"}]},{"vulns":null}]}"#;
         let osv_vuln_json = r#"{"id":"GHSA-mix-1234","summary":"Mix vuln","references":[]}"#;
 
-        let lr = make_lookup_report(pypi_json, osv_batch_json, osv_vuln_json, "mixpkg>=1.0.0", true);
+        let lr = make_lookup_report(
+            pypi_json,
+            osv_batch_json,
+            osv_vuln_json,
+            "mixpkg>=1.0.0",
+            true,
+        );
         let summary = summarize(&lr);
 
         assert_eq!(summary.package, "mixpkg");
