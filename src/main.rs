@@ -20,8 +20,42 @@ use rmcp::{
 };
 use std::net::SocketAddr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+// -----------------------------------------------------------------------------
+// Bounded string deserialization
+
+const MAX_NAME_LEN: usize = 256;
+const MAX_FILTER_LEN: usize = 32;
+
+fn deserialize_name<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.len() > MAX_NAME_LEN {
+        return Err(serde::de::Error::custom(format!(
+            "name exceeds {MAX_NAME_LEN} characters"
+        )));
+    }
+    Ok(s)
+}
+
+fn deserialize_filter<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    if let Some(ref s) = opt {
+        if s.len() > MAX_FILTER_LEN {
+            return Err(serde::de::Error::custom(format!(
+                "cvss_filter exceeds {MAX_FILTER_LEN} characters"
+            )));
+        }
+    }
+    Ok(opt)
+}
 
 // -----------------------------------------------------------------------------
 // Tool Arguments
@@ -29,23 +63,27 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MostRecentNotVulnerableArgs {
     /// The package name to look up (e.g., "requests", "numpy", "flask").
+    #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct IsVulnerableArgs {
     /// The exact package name and version (e.g., "requests==2.31.0", "numpy==1.24.0").
+    #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LookupArgs {
     /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). Note that when an exact "==" version is specified, the `limit` and `retain_passing` parameters have no effect.
+    #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
     /// When the name is not an exact version, limit the number of recent versions to check.
     pub limit: Option<usize>,
     /// CVSS score filter: "all" to show all vulnerabilities, "max" to show only the
     /// maximum observed score, or a number (0.0-10.0) to filter by threshold
+    #[serde(default, deserialize_with = "deserialize_filter")]
     pub cvss_filter: Option<String>,
     /// 'When the name is not an exact version, setting this to True will return refernces for all packages, include those with no vulnerabilities (default: false)
     pub retain_passing: Option<bool>,
