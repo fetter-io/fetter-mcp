@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fetter::{
-    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing,
-    LookupReport, UreqClient, path_cache,
+    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing, LookupReport,
+    UreqClient, path_cache,
 };
 
 use crate::summary::{LookupSummary, summarize};
@@ -121,7 +121,10 @@ mod tests {
         mock_get_map.insert("https://api.osv.dev".to_string(), osv_vuln_json.to_string());
 
         let mut mock_post_map = HashMap::new();
-        mock_post_map.insert("https://api.osv.dev".to_string(), osv_batch_json.to_string());
+        mock_post_map.insert(
+            "https://api.osv.dev".to_string(),
+            osv_batch_json.to_string(),
+        );
 
         Arc::new(UreqClientMock {
             mock_get: Some(mock_get_map),
@@ -161,7 +164,8 @@ mod tests {
     #[test]
     fn test_most_recent_not_vulnerable_no_safe_version() {
         let pypi_json = r#"{"info":{"name":"vulnpkg"},"releases":{"1.0.0":[{"filename":"vulnpkg-1.0.0.whl"}]}}"#;
-        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-1234","modified":"2024-01-01T00:00:00Z"}]}]}"#;
+        let osv_batch_json =
+            r#"{"results":[{"vulns":[{"id":"GHSA-1234","modified":"2024-01-01T00:00:00Z"}]}]}"#;
         let osv_vuln_json = r#"{"id":"GHSA-1234","summary":"A vulnerability","references":[]}"#;
 
         let client = make_mock_client(pypi_json, osv_batch_json, osv_vuln_json);
@@ -174,7 +178,8 @@ mod tests {
     #[test]
     fn test_is_vulnerable_detects_vulnerability() {
         let pypi_json = r#"{"info":{"name":"vulnpkg"},"releases":{"1.0.0":[{"filename":"vulnpkg-1.0.0.whl"}]}}"#;
-        let osv_batch_json = r#"{"results":[{"vulns":[{"id":"GHSA-test","modified":"2024-01-01T00:00:00Z"}]}]}"#;
+        let osv_batch_json =
+            r#"{"results":[{"vulns":[{"id":"GHSA-test","modified":"2024-01-01T00:00:00Z"}]}]}"#;
         let osv_vuln_json = r#"{"id":"GHSA-test","summary":"Test vuln","references":[]}"#;
 
         let client = make_mock_client(pypi_json, osv_batch_json, osv_vuln_json);
