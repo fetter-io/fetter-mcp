@@ -1,12 +1,9 @@
 mod summary;
+mod tools;
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use fetter::{
-    CacheConfig, CvssFilter, DepSpec, FlagCacheRefresh, FlagLog, FlagRetainPassing, LookupReport,
-    UreqClientLive, path_cache,
-};
+use fetter::{CvssFilter, UreqClientLive};
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::tool::{ToolCallContext, ToolRouter},
@@ -20,7 +17,7 @@ use rmcp::{
     },
 };
 use std::net::SocketAddr;
-use summary::summarize;
+use tools::{is_vulnerable_impl, lookup_impl, most_recent_not_vulnerable_impl};
 
 use serde::{Deserialize, Deserializer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -121,12 +118,9 @@ impl FetterMcpServer {
         &self,
         Parameters(args): Parameters<LookupArgs>,
     ) -> Result<CallToolResult, McpError> {
-        // TODO: this string should be sanatized
         let name = args.name.trim().to_string();
-
-        let limit = args.limit.or(None);
+        let limit = args.limit;
         let retain_passing = args.retain_passing.unwrap_or(false);
-
         let cvss_filter = match args.cvss_filter.as_deref() {
             Some("max") => CvssFilter::MaxOnly,
             Some(s) => match s.parse::<f64>() {
@@ -142,26 +136,10 @@ impl FetterMcpServer {
             )]));
         }
 
-        let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let result = tokio::task::spawn_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
-            let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
-            let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
-
-            let lr = LookupReport::from_dep_spec(
-                client,
-                &ds,
-                limit,
-                &cache_config,
-                FlagCacheRefresh(false),
-                FlagLog(false),
-                cvss_filter,
-                FlagRetainPassing(retain_passing),
-            )
-            .map_err(|e| e.to_string())?;
-
-            let summary = summarize(&lr);
-            serde_json::to_value(&summary).map_err(|e| e.to_string())
+            lookup_impl(client, &name, limit, cvss_filter, retain_passing)
+                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
         })
         .await;
 
@@ -197,45 +175,10 @@ impl FetterMcpServer {
             )]));
         }
 
-        let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let result = tokio::task::spawn_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
-            if ds.get_exact().is_some() {
-                return Err("Provide only a package name, not specific version.".to_string());
-            }
-            let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
-            let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
-
-            let lr = LookupReport::from_dep_spec(
-                client,
-                &ds,
-                Some(1),
-                &cache_config,
-                FlagCacheRefresh(false),
-                FlagLog(false),
-                CvssFilter::All,
-                FlagRetainPassing(true),
-            )
-            .map_err(|e| e.to_string())?;
-
-            let summary = summarize(&lr);
-
-            // Find the first version that is not vulnerable
-            let safe_version = summary.versions.iter().find(|v| !v.vulnerable);
-
-            match safe_version {
-                Some(v) => serde_json::to_value(serde_json::json!({
-                    "package": summary.package,
-                    "version": v.version,
-                    "vulnerable": false,
-                    "vulnerabilities": [],
-                }))
-                .map_err(|e| e.to_string()),
-                None => Err(format!(
-                    "No recent version of '{}' found without vulnerabilities",
-                    summary.package
-                )),
-            }
+            most_recent_not_vulnerable_impl(client, &name)
+                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
         })
         .await;
 
@@ -271,41 +214,10 @@ impl FetterMcpServer {
             )]));
         }
 
-        let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let result = tokio::task::spawn_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            let ds = DepSpec::from_string(&name).map_err(|e| e.to_string())?;
-
-            if ds.get_exact().is_none() {
-                return Err("Exact version required (e.g., 'requests==2.31.0')".to_string());
-            }
-
-            let cache_dir = path_cache(true).unwrap_or_else(std::env::temp_dir);
-            let cache_config = CacheConfig::new(Duration::from_secs(3600), cache_dir);
-
-            let lr = LookupReport::from_dep_spec(
-                client,
-                &ds,
-                Some(1),
-                &cache_config,
-                FlagCacheRefresh(false),
-                FlagLog(false),
-                CvssFilter::All,
-                FlagRetainPassing(true),
-            )
-            .map_err(|e| e.to_string())?;
-
-            let summary = summarize(&lr);
-
-            match summary.versions.first() {
-                Some(v) => serde_json::to_value(serde_json::json!({
-                    "package": summary.package,
-                    "version": v.version,
-                    "vulnerable": v.vulnerable,
-                    "vulnerabilities": v.vulnerabilities,
-                }))
-                .map_err(|e| e.to_string()),
-                None => Err(format!("Version not found for '{}'", name)),
-            }
+            is_vulnerable_impl(client, &name)
+                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
         })
         .await;
 

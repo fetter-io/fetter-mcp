@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use fetter::{LookupReport, Tableable};
 use serde::Serialize;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct VulnSummary {
     pub id: String,
     pub summary: String,
