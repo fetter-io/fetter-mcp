@@ -110,7 +110,6 @@ impl FetterMcpServer {
         }
     }
 
-    /// Look up a package by name and return basic information
     #[tool(
         description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities."
     )]
@@ -159,7 +158,6 @@ impl FetterMcpServer {
         }
     }
 
-    /// Find the most recent version of a package that has no known vulnerabilities
     #[tool(
         description = "Find the most recent version of a package that has no known vulnerabilities."
     )]
@@ -198,7 +196,6 @@ impl FetterMcpServer {
         }
     }
 
-    /// Check if a specific package version has known vulnerabilities
     #[tool(
         description = "Check if a specific package version has known vulnerabilities. Requires an exact version specifier (e.g., 'requests==2.31.0')."
     )]
