@@ -289,7 +289,7 @@ async fn main() -> anyhow::Result<()> {
 
     let router = axum::Router::new().nest_service("/mcp", service);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
     axum::serve(listener, router)

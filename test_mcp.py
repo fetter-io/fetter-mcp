@@ -6,7 +6,7 @@ import json
 import sys
 import urllib.request
 
-BASE_URL = "http://localhost:4000/mcp"
+BASE_URL = "http://localhost:8080/mcp"
 SESSION_ID = None
 REQ_ID = 0
 
