@@ -1,7 +1,7 @@
 
 
 ```bash
-claude mcp add --transport http notion https://mcp.fetter.io/mcp
+claude mcp add --transport http fetter https://mcp.fetter.io/mcp
 ```
 
 ```bash
