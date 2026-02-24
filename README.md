@@ -1,6 +1,6 @@
 # Fetter MCP
 
-A Model Context Protocol (MCP) server that gives AI coding agents real-time access to Python package vulnerability data. Built on [fetter](https://github.com/fetter-io/fetter-rs), it queries PyPI and OSV to surface known CVEs, CVSS scores, and safe versions — so your agent can make informed dependency decisions as it writes code.
+A remote Model Context Protocol (MCP) server (`https://mcp.fetter.io/mcp`) that gives AI coding agents real-time access to Python package vulnerability data. Built on [fetter](https://github.com/fetter-io/fetter-rs), it queries PyPI and OSV to surface known CVEs, CVSS scores, and safe versions — so your agent can make informed dependency decisions as it writes code.
 
 ## Features
 
