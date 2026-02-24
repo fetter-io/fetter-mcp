@@ -6,7 +6,9 @@ import json
 import sys
 import urllib.request
 
-BASE_URL = "http://localhost:8080/mcp"
+# BASE_URL = "http://localhost:8080/mcp"
+BASE_URL = "https://mcp.fetter.io/mcp"
+
 SESSION_ID = None
 REQ_ID = 0
 
