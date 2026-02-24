@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.fetter/fetter-mcp",
+  "title": "Fetter MCP",
+  "description": "Real-time Python package vulnerability data via PyPI and OSV. Look up packages, check specific versions for known CVEs, and find the most recent safe version.",
+  "version": "0.1.0",
+  "websiteUrl": "https://github.com/fetter-io/fetter-mcp",
+  "repository": {
+    "url": "https://github.com/fetter-io/fetter-mcp",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.fetter.io/mcp"
+    }
+  ]
+}
