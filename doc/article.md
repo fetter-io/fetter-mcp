@@ -29,3 +29,11 @@ Rust MCP
         Implicit registration with decorator
 
     Serve /mcp on port 8080
+
+
+Terraform
+    EC2 with protection
+        CloudFront: HTTPS, caching?
+        WAF: rate limiting
+    Need  Mcp-Session-Id header pass through
+    Avoid skipping CloudFront with private header: X-Fetter-MCP-Internal
