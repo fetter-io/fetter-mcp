@@ -3,6 +3,7 @@ mod tools;
 
 use std::sync::Arc;
 
+use axum::{extract::Request, middleware::Next, response::Response};
 use fetter::{CvssFilter, UreqClientLive};
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
@@ -280,7 +281,14 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting Fetter MCP Server");
+    let tenant_secret = std::env::var("TENANT_SECRET").ok();
+    if tenant_secret.is_some() {
+        tracing::info!("Starting Fetter MCP Server (origin validation enabled)");
+    } else {
+        tracing::warn!(
+            "Starting Fetter MCP Server (TENANT_SECRET not set, origin validation disabled)"
+        );
+    }
 
     let service = StreamableHttpService::new(
         || Ok(FetterMcpServer::new()),
@@ -288,7 +296,29 @@ async fn main() -> anyhow::Result<()> {
         Default::default(),
     );
 
-    let router = axum::Router::new().nest_service("/mcp", service);
+    let router =
+        axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(axum::middleware::from_fn(
+                move |req: Request, next: Next| {
+                    let secret = tenant_secret.clone();
+                    async move {
+                        if let Some(ref expected) = secret {
+                            let header = req
+                                .headers()
+                                .get("X-Fetter-MCP-Internal")
+                                .and_then(|v| v.to_str().ok());
+                            if header != Some(expected) {
+                                return Ok(Response::builder()
+                                    .status(403)
+                                    .body(axum::body::Body::from("Forbidden"))
+                                    .unwrap());
+                            }
+                        }
+                        Ok::<_, std::convert::Infallible>(next.run(req).await)
+                    }
+                },
+            ));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     let listener = tokio::net::TcpListener::bind(addr).await?;
