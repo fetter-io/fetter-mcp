@@ -26,7 +26,6 @@ pub struct VulnerabilityCheckResult {
     pub vulnerabilities: Vec<crate::summary::VulnSummary>,
 }
 
-/// Core logic for the lookup tool
 pub fn lookup_impl(
     client: Arc<dyn UreqClient>,
     name: &str,
@@ -53,7 +52,6 @@ pub fn lookup_impl(
     Ok(summarize(&lr))
 }
 
-/// Core logic for the most_recent_not_vulnerable tool
 pub fn most_recent_not_vulnerable_impl(
     client: Arc<dyn UreqClient>,
     name: &str,
@@ -81,7 +79,6 @@ pub fn most_recent_not_vulnerable_impl(
     }
 }
 
-/// Core logic for the is_vulnerable tool
 pub fn is_vulnerable_impl(
     client: Arc<dyn UreqClient>,
     name: &str,

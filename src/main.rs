@@ -102,6 +102,7 @@ impl Default for FetterMcpServer {
     }
 }
 
+// tool_router scans for all tool methods and generates the Self::tool_router() constructor
 #[tool_router]
 impl FetterMcpServer {
     pub fn new() -> Self {
