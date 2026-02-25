@@ -10,16 +10,17 @@
 
 # Teach Your Coding Agent to Avoid Old & Vulnerable Python Packages
 
+# Stop Your Coding Agent from Installing Vulnerable Python Packages with Fetter MCP
 
 
-Humans and agents can make the same mistakes: installing old or vulnerable versions of Python packages. 
+Humans and agents can make the same mistakes: installing old or vulnerable versions of Python packages.
 
 Coding agents in particular can make surprising
-choices, choosing versions representative of their training data regardless of age or vulnerabilities. Even if an agent picks a recent version it is unlikely to check for vulnerabilities. 
+choices, choosing versions representative of their training data regardless of age or vulnerabilities. Even if an agent picks a recent version it is unlikely to check for vulnerabilities.
 
-For agents, the Fetter MCP remote server provides tools to get the most recent version of a package without vulnerabilities. Additional tools permit checking which versions have vulnerabilities. 
+For agents, the Fetter MCP remote server provides tools to get the most recent version of a package without vulnerabilities. Additional tools permit checking which versions have vulnerabilities.
 
-For humans, the Fetter IO web application offers a Lookup interface to easily display all versions of a package, as well as any vulnerabilities associated with those packages. 
+For humans, the Fetter IO web application offers a Lookup interface to easily display all versions of a package, as well as any vulnerabilities associated with those packages.
 
 Both tools are buit in Ruse with fetter-rs core library, delivering excellent performance.
 
