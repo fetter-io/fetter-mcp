@@ -4,6 +4,14 @@
 
 # Give Yor Agents Tools to Avoid Old or Vulnerable Python Packages
 
+# Do You Know What Your Coding Agent Just pip-Installed?
+
+# Stop Your Agent from Installing Vulnerable Python Packages
+
+# Teach Your Coding Agent to Avoid Old & Vulnerable Python Packages
+
+
+
 Humans and agents can make the same mistakes: installing old or vulnerable versions of Python packages. 
 
 Coding agents in particular can make surprising
