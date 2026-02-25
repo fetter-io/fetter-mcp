@@ -1,0 +1,9 @@
+
+
+# Updating reference
+https://registry.modelcontextprotocol.io/?q=fetter
+
+
+$ mcp-publisher login github
+$ mcp-publisher publish
+
