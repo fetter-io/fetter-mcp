@@ -3,7 +3,7 @@
   "name": "io.github.fetter-io/fetter-mcp",
   "title": "Fetter MCP",
   "description": "Real-time Python package and vulnerability data for AI coding agents.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "websiteUrl": "https://fetter.io/mcp",
   "repository": {
     "url": "https://github.com/fetter-io/fetter-mcp",
