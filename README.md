@@ -56,12 +56,38 @@ Find the most recent version of a package that has no known vulnerabilities. Pro
 **Parameters:**
 - `package_name` — package name only (no version specifier), e.g. `"requests"`
 
-```python
-# Before adding a new dependency, find a safe version to pin
-most_recent_not_vulnerable(package_name="pillow")
 
-# Use the result to write a pinned requirement
-most_recent_not_vulnerable(package_name="cryptography")
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "id": 2,
+  "params": {
+    "name": "most_recent_not_vulnerable",
+    "arguments": {
+      "name": "cryptography"
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [],
+    "structuredContent": {
+      "package": "cryptography",
+      "version": "46.0.5",
+      "vulnerabilities": [],
+      "vulnerable": false
+    },
+    "isError": false
+  }
+}
 ```
 
 
@@ -72,12 +98,80 @@ Check if a specific package version has known vulnerabilities. Requires an exact
 **Parameters:**
 - `dep_spec` — exact version specifier, e.g. `"requests==2.31.0"`
 
-```python
-# Check a specific version of requests
-is_vulnerable(dep_spec="requests==2.31.0")
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "id": 2,
+  "params": {
+    "name": "is_vulnerable",
+    "arguments": {
+      "name": "requests==2.19.1"
+    }
+  }
+}
+```
 
-# Verify a pinned version before adding it to requirements.txt
-is_vulnerable(dep_spec="numpy==1.24.0")
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [],
+    "structuredContent": {
+      "package": "requests",
+      "version": "2.19.1",
+      "vulnerabilities": [
+        {
+          "cvss_score": 5.3,
+          "id": "GHSA-9hjg-9r4m-mvj7",
+          "severity": "(Medium):",
+          "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+          "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+        },
+        {
+          "cvss_score": 5.6,
+          "id": "GHSA-9wx4-h78v-vm56",
+          "severity": "(Medium):",
+          "summary": "Requests Session object does not verify requests after making first request with verify=False",
+          "url": "https://osv.dev/vulnerability/GHSA-9wx4-h78v-vm56"
+        },
+        {
+          "cvss_score": 6.1,
+          "id": "GHSA-j8r2-6x86-q33q",
+          "severity": "(Medium):",
+          "summary": "Unintended leak of Proxy-Authorization header in requests",
+          "url": "https://osv.dev/vulnerability/GHSA-j8r2-6x86-q33q"
+        },
+        {
+          "cvss_score": 7.5,
+          "id": "GHSA-x84v-xcm2-53pg",
+          "severity": "(High):",
+          "summary": "Insufficiently Protected Credentials in Requests",
+          "url": "https://osv.dev/vulnerability/GHSA-x84v-xcm2-53pg"
+        },
+        {
+          "cvss_score": null,
+          "id": "PYSEC-2018-28",
+          "severity": null,
+          "summary": "",
+          "url": "https://osv.dev/vulnerability/PYSEC-2018-28"
+        },
+        {
+          "cvss_score": null,
+          "id": "PYSEC-2023-74",
+          "severity": null,
+          "summary": "",
+          "url": "https://osv.dev/vulnerability/PYSEC-2023-74"
+        }
+      ],
+      "vulnerable": true
+    },
+    "isError": false
+  }
+}
 ```
 
 
@@ -92,16 +186,98 @@ Look up a package by name and optional version specifier to find which versions 
 - `count` — limit the number of recent versions checked
 - `retain_passing` — include versions with no known vulnerabilities in the results
 
-```python
-# Check recent versions of requests for any vulnerabilities
-lookup(dep_specs="requests")
 
-# Check numpy 2.x versions, show only CVSS scores >= 7.0
-lookup(dep_specs="numpy>=2.0", cvss_threshold=7.0)
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "id": 2,
+  "params": {
+    "name": "lookup",
+    "arguments": {
+      "name": "requests>=2.32.0",
+      "retain_passing": true
+    }
+  }
+}
+```
 
-# Get all versions of flask 3.0.0, including passing ones
-lookup(dep_specs="flask==3.0.0", retain_passing=True)
-
-# Check only the 5 most recent releases
-lookup(dep_specs="pillow", count=5)
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [],
+    "structuredContent": {
+      "package": "requests",
+      "versions": [
+        {
+          "version": "2.32.0",
+          "vulnerabilities": [
+            {
+              "cvss_score": 5.3,
+              "id": "GHSA-9hjg-9r4m-mvj7",
+              "severity": "(Medium):",
+              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+            }
+          ],
+          "vulnerable": true
+        },
+        {
+          "version": "2.32.1",
+          "vulnerabilities": [
+            {
+              "cvss_score": 5.3,
+              "id": "GHSA-9hjg-9r4m-mvj7",
+              "severity": "(Medium):",
+              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+            }
+          ],
+          "vulnerable": true
+        },
+        {
+          "version": "2.32.2",
+          "vulnerabilities": [
+            {
+              "cvss_score": 5.3,
+              "id": "GHSA-9hjg-9r4m-mvj7",
+              "severity": "(Medium):",
+              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+            }
+          ],
+          "vulnerable": true
+        },
+        {
+          "version": "2.32.3",
+          "vulnerabilities": [
+            {
+              "cvss_score": 5.3,
+              "id": "GHSA-9hjg-9r4m-mvj7",
+              "severity": "(Medium):",
+              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
+            }
+          ],
+          "vulnerable": true
+        },
+        {
+          "version": "2.32.4",
+          "vulnerabilities": [],
+          "vulnerable": false
+        },
+        {
+          "version": "2.32.5",
+          "vulnerabilities": [],
+          "vulnerable": false
+        }
+      ]
+    },
+    "isError": false
+  }
+}
 ```
