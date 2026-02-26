@@ -37,7 +37,7 @@ https://mcp.fetter.io/mcp
 
 Once installed, the Fetter MCP tools are available to your AI agent during coding sessions. The agent can call them automatically when adding or auditing dependencies; no explicit tool invocation is required in your prompts.
 
-**Example prompts:**
+**Example prompts**
 - "Add the latest safe version of requests to requirements.txt"
 - "Are there any known vulnerabilities in my current dependencies?"
 - "What is the most recent version of pillow with no CVEs?"
@@ -53,11 +53,11 @@ The agent selects the appropriate tool based on context:
 
 Find the most recent version of a package that has no known vulnerabilities. Provide only a package name and the server will search recent releases for a safe version. Useful when pinning a dependency to the latest clean release.
 
-**Parameters:**
+**Parameters**
 - `package_name` — package name only (no version specifier), e.g. `"requests"`
 
 
-**Request:**
+**Example Request**
 ```json
 {
   "jsonrpc": "2.0",
@@ -72,7 +72,7 @@ Find the most recent version of a package that has no known vulnerabilities. Pro
 }
 ```
 
-**Response:**
+**Example Response:**
 ```json
 {
   "jsonrpc": "2.0",
@@ -95,10 +95,10 @@ Find the most recent version of a package that has no known vulnerabilities. Pro
 
 Check if a specific package version has known vulnerabilities. Requires an exact version specifier. Returns vulnerability IDs, summaries, CVSS scores, severity ratings, and reference URLs.
 
-**Parameters:**
+**Parameters**
 - `dep_spec` — exact version specifier, e.g. `"requests==2.31.0"`
 
-**Request:**
+**Example Request**
 ```json
 {
   "jsonrpc": "2.0",
@@ -113,7 +113,7 @@ Check if a specific package version has known vulnerabilities. Requires an exact
 }
 ```
 
-**Response:**
+**Example Response:**
 ```json
 {
   "jsonrpc": "2.0",
@@ -179,7 +179,7 @@ Check if a specific package version has known vulnerabilities. Requires an exact
 
 Look up a package by name and optional version specifier to find which versions are available and whether they have known vulnerabilities. Supports specifiers such as `"requests"`, `"numpy>=2.0"`, or `"flask==3.0.0"`.
 
-**Parameters:**
+**Parameters**
 - `dep_specs` — package name or version specifier
 - `cvss_threshold` — filter to vulnerabilities at or above this CVSS score (0–10)
 - `max_observed_score` — return only the highest CVSS score per version rather than all individual vulnerabilities
@@ -187,7 +187,7 @@ Look up a package by name and optional version specifier to find which versions 
 - `retain_passing` — include versions with no known vulnerabilities in the results
 
 
-**Request:**
+**Example Request**
 ```json
 {
   "jsonrpc": "2.0",
@@ -203,7 +203,7 @@ Look up a package by name and optional version specifier to find which versions 
 }
 ```
 
-**Response:**
+**Example Response:**
 ```json
 {
   "jsonrpc": "2.0",
