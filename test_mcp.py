@@ -6,8 +6,8 @@ import json
 import sys
 import urllib.request
 
-BASE_URL = "http://localhost:8080/mcp"
-# BASE_URL = "https://mcp.fetter.io/mcp"
+# BASE_URL = "http://localhost:8080/mcp"
+BASE_URL = "https://mcp.fetter.io/mcp"
 
 SESSION_ID = None
 REQ_ID = 0
@@ -36,6 +36,8 @@ def send(method, params=None, is_notification=False):
         headers["Mcp-Session-Id"] = SESSION_ID
 
     data = json.dumps(body).encode()
+    print(json.dumps(body, indent=2))
+
     req = urllib.request.Request(BASE_URL, data=data, headers=headers)
 
     try:
