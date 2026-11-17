@@ -6,19 +6,21 @@ use std::sync::Arc;
 use axum::{extract::Request, middleware::Next, response::Response};
 use fetter::{CvssFilter, UreqClientLive};
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler,
-    handler::server::tool::{ToolCallContext, ToolRouter},
+    ErrorData as McpError, ServerHandler,
+    handler::server::tool::ToolRouter,
     handler::server::wrapper::Parameters,
     model::*,
-    schemars,
-    service::RequestContext,
-    tool, tool_router,
+    schemars, tool, tool_handler, tool_router,
     transport::streamable_http_server::{
-        StreamableHttpService, session::local::LocalSessionManager,
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
+use serde::Serialize;
 use std::net::SocketAddr;
-use tools::{is_vulnerable_impl, lookup_impl, most_recent_not_vulnerable_impl};
+use tools::{
+    is_vulnerable_impl, list_ecosystems_impl, lookup_impl, most_recent_not_vulnerable_impl,
+    parse_ecosystem,
+};
 
 use serde::{Deserialize, Deserializer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -28,6 +30,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const MAX_NAME_LEN: usize = 256;
 const MAX_FILTER_LEN: usize = 32;
+const MAX_ECOSYSTEM_LEN: usize = 32;
 
 fn deserialize_name<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -42,19 +45,37 @@ where
     Ok(s)
 }
 
-fn deserialize_filter<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_bounded_opt<'de, D>(
+    deserializer: D,
+    label: &str,
+    max: usize,
+) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let opt: Option<String> = Option::deserialize(deserializer)?;
     if let Some(ref s) = opt
-        && s.len() > MAX_FILTER_LEN
+        && s.len() > max
     {
         return Err(serde::de::Error::custom(format!(
-            "cvss_filter exceeds {MAX_FILTER_LEN} characters"
+            "{label} exceeds {max} characters"
         )));
     }
     Ok(opt)
+}
+
+fn deserialize_filter<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_opt(deserializer, "cvss_filter", MAX_FILTER_LEN)
+}
+
+fn deserialize_ecosystem<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_opt(deserializer, "ecosystem", MAX_ECOSYSTEM_LEN)
 }
 
 // -----------------------------------------------------------------------------
@@ -62,35 +83,71 @@ where
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MostRecentNotVulnerableArgs {
-    /// The package name to look up (e.g., "requests", "numpy", "flask").
+    /// The package name to look up. For Python, a name only (e.g., "requests"). For other ecosystems, a name (e.g., "lodash", "serde", "actions/checkout"), optionally with an "@requirement" range to search within.
     #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
+    /// The package ecosystem: "python" (default), "npm", "cargo", "gha", "vscode", "go", "ruby", "php", or "swift". Call `list_ecosystems` for name formats and examples.
+    #[serde(default, deserialize_with = "deserialize_ecosystem")]
+    pub ecosystem: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct IsVulnerableArgs {
-    /// The exact package name and version (e.g., "requests==2.31.0", "numpy==1.24.0").
+    /// The exact package name and version. For Python, use "==" (e.g., "requests==2.31.0"). For other ecosystems, use "name@version" (e.g., "lodash@4.17.15", "time@=0.1.43", "tj-actions/changed-files@v35").
     #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
+    /// The package ecosystem: "python" (default), "npm", "cargo", "gha", "vscode", "go", "ruby", "php", or "swift". Call `list_ecosystems` for name formats and examples.
+    #[serde(default, deserialize_with = "deserialize_ecosystem")]
+    pub ecosystem: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LookupArgs {
-    /// The package name to look up (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). Note that when an exact "==" version is specified, the `limit` and `retain_passing` parameters have no effect.
+    /// The package name with an optional requirement. For Python, a PEP 508 specifier (e.g., "requests", "numpy>=2.0", "flask==3.0.0"). For other ecosystems, "name" or "name@requirement" in the ecosystem's native syntax (e.g., "lodash@>=4.17.15 <4.17.22", "serde@^1.0", "actions/checkout"). Note that when an exact version is specified, the `limit` and `retain_passing` parameters have no effect.
     #[serde(deserialize_with = "deserialize_name")]
     pub name: String,
+    /// The package ecosystem: "python" (default), "npm", "cargo", "gha", "vscode", "go", "ruby", "php", or "swift". Call `list_ecosystems` for name formats and examples.
+    #[serde(default, deserialize_with = "deserialize_ecosystem")]
+    pub ecosystem: Option<String>,
     /// When the name is not an exact version, limit the number of recent versions to check.
     pub limit: Option<usize>,
     /// CVSS score filter: "all" to show all vulnerabilities, "max" to show only the
     /// maximum observed score, or a number (0.0-10.0) to filter by threshold
     #[serde(default, deserialize_with = "deserialize_filter")]
     pub cvss_filter: Option<String>,
-    /// 'When the name is not an exact version, setting this to True will return refernces for all packages, include those with no vulnerabilities (default: false)
+    /// When the name is not an exact version, setting this to true will return references for all versions, including those with no vulnerabilities (default: false)
     pub retain_passing: Option<bool>,
 }
 
 // -----------------------------------------------------------------------------
+// Helpers
+
+fn error_result(msg: impl Into<String>) -> CallToolResult {
+    CallToolResult::error(vec![ContentBlock::text(msg)])
+}
+
+/// Run a blocking lookup on the blocking thread pool, returning its serialized value as structured content, or an error result.
+async fn run_blocking<T, F>(f: F) -> CallToolResult
+where
+    T: Serialize,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let result = tokio::task::spawn_blocking(move || {
+        f().and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(value)) => CallToolResult::structured(value),
+        Ok(Err(e)) => error_result(format!("Lookup failed: {e}")),
+        Err(e) => error_result(format!("Task failed: {e}")),
+    }
+}
+
+// -----------------------------------------------------------------------------
 // MCP Server
+
+const INSTRUCTIONS: &str = "Fetter MCP Server: package versions and known vulnerabilities (from OSV) for Python, npm, Cargo, GitHub Actions, VS Code extensions, Go, Ruby, PHP, and Swift. Every tool takes an optional `ecosystem` (default \"python\"); call `list_ecosystems` for the supported ecosystems and their name formats.";
 
 #[derive(Clone)]
 pub struct FetterMcpServer {
@@ -113,12 +170,26 @@ impl FetterMcpServer {
     }
 
     #[tool(
-        description = "Look up a package by name and (optionally) version number to find which versions are available and/or have vulnerabilities."
+        description = "List the package ecosystems this server supports, with the default ecosystem, each ecosystem's registry, its package name format, and example names."
+    )]
+    async fn list_ecosystems(&self) -> Result<CallToolResult, McpError> {
+        Ok(match serde_json::to_value(list_ecosystems_impl()) {
+            Ok(value) => CallToolResult::structured(value),
+            Err(e) => error_result(format!("Serialization failed: {e}")),
+        })
+    }
+
+    #[tool(
+        description = "Look up a package by name and (optionally) version requirement to find which versions are available and/or have vulnerabilities. Supports multiple ecosystems via `ecosystem` (default: python)."
     )]
     async fn lookup(
         &self,
         Parameters(args): Parameters<LookupArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let eco = match parse_ecosystem(args.ecosystem.as_deref()) {
+            Ok(e) => e,
+            Err(e) => return Ok(error_result(e)),
+        };
         let name = args.name.trim().to_string();
         let limit = args.limit;
         let retain_passing = args.retain_passing.unwrap_or(false);
@@ -132,145 +203,120 @@ impl FetterMcpServer {
         };
 
         if name.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "Package name cannot be empty",
-            )]));
+            return Ok(error_result("Package name cannot be empty"));
         }
 
-        let result = tokio::task::spawn_blocking(move || {
+        Ok(run_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            lookup_impl(client, &name, limit, cvss_filter, retain_passing)
-                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
+            lookup_impl(client, eco, &name, limit, cvss_filter, retain_passing)
         })
-        .await;
-
-        match result {
-            Ok(Ok(value)) => Ok(CallToolResult {
-                content: vec![],
-                structured_content: Some(value),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Lookup failed: {e}"
-            ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Task failed: {e}"
-            ))])),
-        }
+        .await)
     }
 
     #[tool(
-        description = "Find the most recent version of a package that has no known vulnerabilities."
+        description = "Find the most recent version of a package that has no known vulnerabilities. Supports multiple ecosystems via `ecosystem` (default: python)."
     )]
     async fn most_recent_not_vulnerable(
         &self,
         Parameters(args): Parameters<MostRecentNotVulnerableArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let eco = match parse_ecosystem(args.ecosystem.as_deref()) {
+            Ok(e) => e,
+            Err(e) => return Ok(error_result(e)),
+        };
         let name = args.name.trim().to_string();
 
         if name.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "Package name cannot be empty",
-            )]));
+            return Ok(error_result("Package name cannot be empty"));
         }
 
-        let result = tokio::task::spawn_blocking(move || {
+        Ok(run_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            most_recent_not_vulnerable_impl(client, &name)
-                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
+            most_recent_not_vulnerable_impl(client, eco, &name)
         })
-        .await;
-
-        match result {
-            Ok(Ok(value)) => Ok(CallToolResult {
-                content: vec![],
-                structured_content: Some(value),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Lookup failed: {e}"
-            ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Task failed: {e}"
-            ))])),
-        }
+        .await)
     }
 
     #[tool(
-        description = "Check if a specific package version has known vulnerabilities. Requires an exact version specifier (e.g., 'requests==2.31.0')."
+        description = "Check if a specific package version has known vulnerabilities. Requires an exact version: 'requests==2.31.0' for Python (the default ecosystem), or 'name@version' for other ecosystems (e.g., 'lodash@4.17.15' with ecosystem 'npm')."
     )]
     async fn is_vulnerable(
         &self,
         Parameters(args): Parameters<IsVulnerableArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let eco = match parse_ecosystem(args.ecosystem.as_deref()) {
+            Ok(e) => e,
+            Err(e) => return Ok(error_result(e)),
+        };
         let name = args.name.trim().to_string();
 
         if name.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "Package name cannot be empty",
-            )]));
+            return Ok(error_result("Package name cannot be empty"));
         }
 
-        let result = tokio::task::spawn_blocking(move || {
+        Ok(run_blocking(move || {
             let client = Arc::new(UreqClientLive);
-            is_vulnerable_impl(client, &name)
-                .and_then(|s| serde_json::to_value(&s).map_err(|e| e.to_string()))
+            is_vulnerable_impl(client, eco, &name)
         })
-        .await;
-
-        match result {
-            Ok(Ok(value)) => Ok(CallToolResult {
-                content: vec![],
-                structured_content: Some(value),
-                is_error: Some(false),
-                meta: None,
-            }),
-            Ok(Err(e)) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Lookup failed: {e}"
-            ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                "Task failed: {e}"
-            ))])),
-        }
+        .await)
     }
 }
 
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for FetterMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: env!("CARGO_PKG_NAME").to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                ..Default::default()
-            },
-            instructions: Some("Fetter MCP Server".to_string()),
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION"),
+            ))
+            .with_instructions(INSTRUCTIONS)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// HTTP configuration
+
+/// Hosts accepted in the `Host` header when `MCP_ALLOWED_HOSTS` is not set: loopback (local development) and the public hostnames CloudFront forwards.
+const DEFAULT_ALLOWED_HOSTS: [&str; 5] = [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "mcp.fetter.io",
+    "www.mcp.fetter.io",
+];
+
+/// Parse a comma-separated `MCP_ALLOWED_HOSTS` value; `None` (unset) gives the defaults, and `*` disables Host validation.
+fn allowed_hosts(env: Option<&str>) -> Option<Vec<String>> {
+    match env.map(str::trim) {
+        None | Some("") => Some(
+            DEFAULT_ALLOWED_HOSTS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        ),
+        Some("*") => None,
+        Some(list) => Some(
+            list.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect(),
+        ),
+    }
+}
+
+fn http_config() -> StreamableHttpServerConfig {
+    let config = StreamableHttpServerConfig::default();
+    match allowed_hosts(std::env::var("MCP_ALLOWED_HOSTS").ok().as_deref()) {
+        Some(hosts) => {
+            tracing::info!("Allowed hosts: {}", hosts.join(", "));
+            config.with_allowed_hosts(hosts)
         }
-    }
-
-    async fn list_tools(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult {
-            tools: self.tool_router.list_all(),
-            next_cursor: None,
-            meta: None,
-        })
-    }
-
-    async fn call_tool(
-        &self,
-        request: CallToolRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
-        self.tool_router
-            .call(ToolCallContext::new(self, request, context))
-            .await
+        None => {
+            tracing::warn!("Host header validation disabled (MCP_ALLOWED_HOSTS=*)");
+            config.disable_allowed_hosts()
+        }
     }
 }
 
@@ -297,7 +343,7 @@ async fn main() -> anyhow::Result<()> {
     let service = StreamableHttpService::new(
         || Ok(FetterMcpServer::new()),
         LocalSessionManager::default().into(),
-        Default::default(),
+        http_config(),
     );
 
     let router =

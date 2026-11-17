@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use fetter::{LookupReport, Tableable};
+use fetter::{Ecosystem, LookupReport, Tableable};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -21,18 +21,37 @@ pub struct VersionSummary {
 
 #[derive(Serialize)]
 pub struct LookupSummary {
+    pub ecosystem: String,
     pub package: String,
     pub versions: Vec<VersionSummary>,
+    /// Versions that could not be checked against OSV; these are not known to be free of vulnerabilities.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unaudited: Vec<String>,
 }
 
-pub fn summarize(lr: &LookupReport) -> LookupSummary {
+/// Extract the severity label from a CVSS display string such as `CVSS 5.3 (Medium): CVSS:3.1/...`.
+fn severity_from_prime(prime: &str) -> Option<String> {
+    let start = prime.find('(')? + 1;
+    let end = start + prime[start..].find(')')?;
+    let sev = prime[start..end].trim();
+    (!sev.is_empty()).then(|| sev.to_string())
+}
+
+pub fn summarize(lr: &LookupReport, ecosystem: Ecosystem) -> LookupSummary {
     let records = lr.get_records();
 
     // We strongly assume that this report is only for one package; while this report can handle multiple packages, as used here it will only get requests for a single package
     let package = records
         .first()
         .map(|r| r.package.name.clone())
+        .or_else(|| lr.unaudited.first().map(|p| p.name.clone()))
         .unwrap_or_default();
+    let ecosystem = records
+        .first()
+        .map(|r| r.package.ecosystem)
+        .unwrap_or(ecosystem)
+        .cli_name()
+        .to_string();
 
     // Deduplicate vuln details across records
     let mut vuln_cache: HashMap<String, VulnSummary> = HashMap::new();
@@ -44,10 +63,7 @@ pub fn summarize(lr: &LookupReport) -> LookupSummary {
                     .cvss_details
                     .as_ref()
                     .and_then(|d| d.get_max_score().map(|s| (s, d.get_prime())))
-                    .map(|(score, prime)| {
-                        let sev = prime.split_whitespace().nth(2).unwrap_or("").to_string();
-                        (Some(score), if sev.is_empty() { None } else { Some(sev) })
-                    })
+                    .map(|(score, prime)| (Some(score), severity_from_prime(&prime)))
                     .unwrap_or((None, None));
 
                 VulnSummary {
@@ -78,7 +94,14 @@ pub fn summarize(lr: &LookupReport) -> LookupSummary {
         })
         .collect();
 
-    LookupSummary { package, versions }
+    let unaudited = lr.unaudited.iter().map(|p| p.version.to_string()).collect();
+
+    LookupSummary {
+        ecosystem,
+        package,
+        versions,
+        unaudited,
+    }
 }
 
 #[cfg(test)]
@@ -134,6 +157,16 @@ mod tests {
     }
 
     #[test]
+    fn test_severity_from_prime() {
+        assert_eq!(
+            severity_from_prime("CVSS 5.3 (Medium): CVSS:3.1/AV:N").as_deref(),
+            Some("Medium")
+        );
+        assert_eq!(severity_from_prime("CVSS 5.3 (): x"), None);
+        assert_eq!(severity_from_prime(""), None);
+    }
+
+    #[test]
     fn test_summarize_no_vulnerabilities() {
         let pypi_json = r#"{"info":{"name":"safepkg"},"releases":{"1.0.0":[{"filename":"safepkg-1.0.0.whl"}]}}"#;
         let osv_batch_json = r#"{"results":[{"vulns":null}]}"#;
@@ -146,8 +179,9 @@ mod tests {
             "safepkg>=1.0.0",
             true,
         );
-        let summary = summarize(&lr);
+        let summary = summarize(&lr, fetter::Ecosystem::Python);
 
+        assert_eq!(summary.ecosystem, "python");
         assert_eq!(summary.package, "safepkg");
         assert_eq!(summary.versions.len(), 1);
         assert_eq!(summary.versions[0].version, "1.0.0");
@@ -168,7 +202,7 @@ mod tests {
             "vulnpkg>=2.0.0",
             false,
         );
-        let summary = summarize(&lr);
+        let summary = summarize(&lr, fetter::Ecosystem::Python);
 
         assert_eq!(summary.package, "vulnpkg");
         assert_eq!(summary.versions.len(), 1);
@@ -178,6 +212,10 @@ mod tests {
         assert_eq!(
             summary.versions[0].vulnerabilities[0].summary,
             "Test vulnerability"
+        );
+        assert_eq!(
+            summary.versions[0].vulnerabilities[0].severity.as_deref(),
+            Some("High")
         );
     }
 
@@ -195,7 +233,7 @@ mod tests {
             "mixpkg>=1.0.0",
             true,
         );
-        let summary = summarize(&lr);
+        let summary = summarize(&lr, fetter::Ecosystem::Python);
 
         assert_eq!(summary.package, "mixpkg");
         assert_eq!(summary.versions.len(), 2);

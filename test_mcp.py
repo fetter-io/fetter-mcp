@@ -93,8 +93,14 @@ def call_tool(name, arguments):
     send("tools/call", {"name": name, "arguments": arguments})
 
 
+def with_ecosystem(arguments, args):
+    if getattr(args, "ecosystem", None):
+        arguments["ecosystem"] = args.ecosystem
+    return arguments
+
+
 def cmd_lookup_name(args):
-    arguments = {"name": args.name}
+    arguments = with_ecosystem({"name": args.name}, args)
     if args.limit is not None:
         arguments["limit"] = args.limit
     if args.cvss_filter is not None:
@@ -105,19 +111,39 @@ def cmd_lookup_name(args):
 
 
 def cmd_most_recent_not_vulnerable(args):
-    call_tool("most_recent_not_vulnerable", {"name": args.name})
+    call_tool("most_recent_not_vulnerable", with_ecosystem({"name": args.name}, args))
 
 
 def cmd_is_vulnerable(args):
-    call_tool("is_vulnerable", {"name": args.name})
+    call_tool("is_vulnerable", with_ecosystem({"name": args.name}, args))
+
+
+def cmd_list_ecosystems(args):
+    call_tool("list_ecosystems", {})
+
+
+def cmd_list_tools(args):
+    init_session()
+    send("tools/list")
 
 
 def main():
+    global BASE_URL
     parser = argparse.ArgumentParser(description="Test client for the Fetter MCP server")
+    parser.add_argument("--url", default=BASE_URL,
+                        help=f"MCP endpoint (default: {BASE_URL}; e.g. http://localhost:8080/mcp)")
+    eco = argparse.ArgumentParser(add_help=False)
+    eco.add_argument("--ecosystem", "-E", default=None,
+                     help="Package ecosystem (default: python); see list_ecosystems")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # list_ecosystems / list_tools
+    sub.add_parser("list_ecosystems", help="List supported ecosystems").set_defaults(
+        func=cmd_list_ecosystems)
+    sub.add_parser("list_tools", help="List tools").set_defaults(func=cmd_list_tools)
+
     # lookup
-    p_lookup = sub.add_parser("lookup", help="Look up a package by name")
+    p_lookup = sub.add_parser("lookup", parents=[eco], help="Look up a package by name")
     p_lookup.add_argument("name", help="Package spec (e.g. 'requests', 'numpy>=2.0')")
     p_lookup.add_argument("--limit", type=int, default=None, help="Max versions to check")
     p_lookup.add_argument("--cvss_filter", default=None,
@@ -127,18 +153,19 @@ def main():
     p_lookup.set_defaults(func=cmd_lookup_name)
 
     # most_recent_not_vulnerable
-    p_safe = sub.add_parser("most_recent_not_vulnerable",
+    p_safe = sub.add_parser("most_recent_not_vulnerable", parents=[eco],
                             help="Find the most recent version without vulnerabilities")
     p_safe.add_argument("name", help="Package name (e.g. 'requests', 'numpy')")
     p_safe.set_defaults(func=cmd_most_recent_not_vulnerable)
 
     # is_vulnerable
-    p_vuln = sub.add_parser("is_vulnerable",
+    p_vuln = sub.add_parser("is_vulnerable", parents=[eco],
                             help="Check if a specific version has vulnerabilities")
     p_vuln.add_argument("name", help="Exact package version (e.g. 'requests==2.31.0')")
     p_vuln.set_defaults(func=cmd_is_vulnerable)
 
     args = parser.parse_args()
+    BASE_URL = args.url
     args.func(args)
 
 

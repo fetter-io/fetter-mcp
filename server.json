@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.fetter-io/fetter-mcp",
   "title": "Fetter MCP",
-  "description": "Real-time Python package and vulnerability data for AI coding agents.",
-  "version": "1.0.1",
+  "description": "Real-time package and vulnerability data (Python, npm, Cargo, Go, and more) for AI coding agents.",
+  "version": "2.0.0",
   "websiteUrl": "https://fetter.io/mcp",
   "repository": {
     "url": "https://github.com/fetter-io/fetter-mcp",

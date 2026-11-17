@@ -1,11 +1,14 @@
 # Fetter MCP
 
-Fetter provides a remote [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server at `https://mcp.fetter.io/mcp` that gives AI coding agents real-time access to Python package vulnerability data. Built on [fetter](https://github.com/fetter-io/fetter-rs), it queries PyPI and OSV to surface known CVEs, CVSS scores, and safe versions so your agent can make informed dependency decisions as it writes code.
+Fetter provides a remote [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server at `https://mcp.fetter.io/mcp` that gives AI coding agents real-time access to package vulnerability data. Built on [fetter](https://github.com/fetter-io/fetter-rs), it queries package registries and [OSV](https://osv.dev) to surface known CVEs, CVSS scores, and safe versions so your agent can make informed dependency decisions as it writes code.
+
+**Supported ecosystems:** Python (PyPI), npm, Cargo (crates.io), GitHub Actions, VS Code extensions (Open VSX), Go, Ruby (RubyGems), PHP (Packagist), and Swift. Python is the default.
 
 **Tools:**
 - `most_recent_not_vulnerable`: find the latest release of a package that is free of known vulnerabilities
 - `is_vulnerable`: check whether a specific pinned version has known CVEs
-- `lookup`: find available versions and their vulnerabilities for any package or specifier
+- `lookup`: find available versions and their vulnerabilities for any package or requirement
+- `list_ecosystems`: list the supported ecosystems, with each one's name format and examples
 
 
 ## Installation
@@ -40,8 +43,9 @@ Once installed, the Fetter MCP tools are available to your AI agent during codin
 **Example prompts**
 - "Add the latest safe version of requests to requirements.txt"
 - "Are there any known vulnerabilities in my current dependencies?"
-- "What is the most recent version of pillow with no CVEs?"
+- "What is the most recent version of lodash with no CVEs?"
 - "Before pinning cryptography, check whether 42.0.5 is vulnerable"
+- "Is `actions/download-artifact@v4.1.2` safe to use in this workflow?"
 
 The agent selects the appropriate tool based on context:
 - Adding a new package: `most_recent_not_vulnerable` to find a safe version
@@ -49,13 +53,58 @@ The agent selects the appropriate tool based on context:
 - Auditing an existing specifier: `lookup` to see affected versions
 
 
+## Ecosystems and Package Names
+
+Every lookup tool takes an optional `ecosystem` parameter. When it is omitted, the ecosystem is `python`. Ecosystems can be named by their fetter name (`python`, `npm`, `cargo`, `gha`, `vscode`, `go`, `ruby`, `php`, `swift`) or by their OSV name (e.g. `PyPI`, `crates.io`, `RubyGems`), case-insensitively.
+
+Python packages use [PEP 508](https://peps.python.org/pep-0508/) specifiers (`requests==2.31.0`, `numpy>=2.0`). Packages of other ecosystems use `name@requirement`, with the requirement in that ecosystem's native syntax:
+
+| Ecosystem | Exact version | Requirement |
+|---|---|---|
+| `python` | `requests==2.31.0` | `requests>=2.30,<3` |
+| `npm` | `lodash@4.17.15` | `lodash@>=4.17.15 <4.17.22` |
+| `cargo` | `time@=0.1.43` | `serde@^1.0` |
+| `gha` | `tj-actions/changed-files@v35` | `actions/download-artifact` (all tags) |
+| `vscode` | `ms-python.python@2024.0.1` | `ms-python.python@>=2024.0.0` |
+| `go` | `golang.org/x/net@v0.17.0` | `golang.org/x/net@>=v0.20.0 <v0.24.0` |
+| `ruby` | `nokogiri@1.13.8` | `nokogiri@~> 1.16.0` |
+| `php` | `guzzlehttp/guzzle@7.4.0` | `guzzlehttp/guzzle@~7.4.0` |
+| `swift` | `github.com/sparkle-project/Sparkle@2.8.1` | `github.com/sparkle-project/Sparkle@>=2.6.0 <2.9.0` |
+
+Every result includes the `ecosystem` it was looked up in. Each vulnerability carries its ID, summary, maximum CVSS score, severity (`Low`, `Medium`, `High`, `Critical`), and an OSV URL. Results are returned as `structuredContent`, with the same JSON also serialized as a text `content` block for clients that do not read structured content.
+
+
+## `list_ecosystems`
+
+List the supported ecosystems, the default ecosystem, and, for each, its registry, name format, and example names.
+
+**Parameters:** none
+
+**Example Response (abridged)**
+```json
+{
+  "default": "python",
+  "ecosystems": [
+    {
+      "name": "npm",
+      "osv_name": "npm",
+      "registry": "npm registry (registry.npmjs.org)",
+      "name_format": "name@requirement with an npm semver range; scoped names allowed",
+      "exact_example": "lodash@4.17.15",
+      "range_example": "lodash@>=4.17.15 <4.17.22"
+    }
+  ]
+}
+```
+
+
 ## `most_recent_not_vulnerable`
 
-Find the most recent version of a package that has no known vulnerabilities. Provide only a package name and the server will search recent releases for a safe version. Useful when pinning a dependency to the latest clean release.
+Find the most recent version of a package that has no known vulnerabilities. Provide only a package name and the server will check the latest release. Useful when pinning a dependency to the latest clean release.
 
 **Parameters**
-- `package_name` — package name only (no version specifier), e.g. `"requests"`
-
+- `name`: the package name, without a version (e.g. `"requests"`, `"lodash"`, `"actions/checkout"`). For ecosystems other than Python, an `@requirement` range may be given to search within.
+- `ecosystem`: optional; defaults to `"python"`
 
 **Example Request**
 ```json
@@ -66,37 +115,32 @@ Find the most recent version of a package that has no known vulnerabilities. Pro
   "params": {
     "name": "most_recent_not_vulnerable",
     "arguments": {
-      "name": "cryptography"
+      "name": "lodash",
+      "ecosystem": "npm"
     }
   }
 }
 ```
 
-**Example Response:**
+**Example Response (`structuredContent`)**
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "content": [],
-    "structuredContent": {
-      "package": "cryptography",
-      "version": "46.0.5",
-      "vulnerabilities": [],
-      "vulnerable": false
-    },
-    "isError": false
-  }
+  "ecosystem": "npm",
+  "package": "lodash",
+  "version": "4.18.1",
+  "vulnerabilities": [],
+  "vulnerable": false
 }
 ```
 
 
 ## `is_vulnerable`
 
-Check if a specific package version has known vulnerabilities. Requires an exact version specifier. Returns vulnerability IDs, summaries, CVSS scores, severity ratings, and reference URLs.
+Check if a specific package version has known vulnerabilities. Requires an exact version: `name==version` for Python, `name@version` for other ecosystems. (For Cargo, a bare version is treated as exact, so `time@0.1.43` and `time@=0.1.43` are equivalent here.)
 
 **Parameters**
-- `dep_spec` — exact version specifier, e.g. `"requests==2.31.0"`
+- `name`: the exact package version, e.g. `"requests==2.31.0"` or `"time@=0.1.43"`
+- `ecosystem`: optional; defaults to `"python"`
 
 **Example Request**
 ```json
@@ -107,85 +151,50 @@ Check if a specific package version has known vulnerabilities. Requires an exact
   "params": {
     "name": "is_vulnerable",
     "arguments": {
-      "name": "requests==2.19.1"
+      "name": "time@=0.1.43",
+      "ecosystem": "cargo"
     }
   }
 }
 ```
 
-**Example Response:**
+**Example Response (`structuredContent`)**
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "content": [],
-    "structuredContent": {
-      "package": "requests",
-      "version": "2.19.1",
-      "vulnerabilities": [
-        {
-          "cvss_score": 5.3,
-          "id": "GHSA-9hjg-9r4m-mvj7",
-          "severity": "(Medium):",
-          "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-          "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
-        },
-        {
-          "cvss_score": 5.6,
-          "id": "GHSA-9wx4-h78v-vm56",
-          "severity": "(Medium):",
-          "summary": "Requests Session object does not verify requests after making first request with verify=False",
-          "url": "https://osv.dev/vulnerability/GHSA-9wx4-h78v-vm56"
-        },
-        {
-          "cvss_score": 6.1,
-          "id": "GHSA-j8r2-6x86-q33q",
-          "severity": "(Medium):",
-          "summary": "Unintended leak of Proxy-Authorization header in requests",
-          "url": "https://osv.dev/vulnerability/GHSA-j8r2-6x86-q33q"
-        },
-        {
-          "cvss_score": 7.5,
-          "id": "GHSA-x84v-xcm2-53pg",
-          "severity": "(High):",
-          "summary": "Insufficiently Protected Credentials in Requests",
-          "url": "https://osv.dev/vulnerability/GHSA-x84v-xcm2-53pg"
-        },
-        {
-          "cvss_score": null,
-          "id": "PYSEC-2018-28",
-          "severity": null,
-          "summary": "",
-          "url": "https://osv.dev/vulnerability/PYSEC-2018-28"
-        },
-        {
-          "cvss_score": null,
-          "id": "PYSEC-2023-74",
-          "severity": null,
-          "summary": "",
-          "url": "https://osv.dev/vulnerability/PYSEC-2023-74"
-        }
-      ],
-      "vulnerable": true
+  "ecosystem": "cargo",
+  "package": "time",
+  "version": "0.1.43",
+  "vulnerabilities": [
+    {
+      "cvss_score": 6.2,
+      "id": "GHSA-wcg3-cvx6-7396",
+      "severity": "Medium",
+      "summary": "Segmentation fault in time",
+      "url": "https://osv.dev/vulnerability/GHSA-wcg3-cvx6-7396"
     },
-    "isError": false
-  }
+    {
+      "cvss_score": 6.2,
+      "id": "RUSTSEC-2020-0071",
+      "severity": "Medium",
+      "summary": "Potential segfault in the time crate",
+      "url": "https://osv.dev/vulnerability/RUSTSEC-2020-0071"
+    }
+  ],
+  "vulnerable": true
 }
 ```
 
 
 ## `lookup`
 
-Look up a package by name and optional version specifier to find which versions are available and whether they have known vulnerabilities. Supports specifiers such as `"requests"`, `"numpy>=2.0"`, or `"flask==3.0.0"`.
+Look up a package by name and optional version requirement to find which versions are available and whether they have known vulnerabilities. Supports requirements such as `"requests"`, `"numpy>=2.0"`, `"lodash@>=4.17.15 <4.17.22"`, or `"actions/download-artifact"`.
 
 **Parameters**
-- `dep_specs` — package name or version specifier
-- `cvss_threshold` — filter to vulnerabilities at or above this CVSS score (0–10)
-- `max_observed_score` — return only the highest CVSS score per version rather than all individual vulnerabilities
-- `count` — limit the number of recent versions checked
-- `retain_passing` — include versions with no known vulnerabilities in the results
-
+- `name`: the package name with an optional requirement
+- `ecosystem`: optional; defaults to `"python"`
+- `limit`: when the name is not an exact version, limit the number of recent versions checked
+- `cvss_filter`: `"all"` (default) for all vulnerabilities, `"max"` for only the highest CVSS score per version, or a number (0–10) to keep only vulnerabilities at or above that score
+- `retain_passing`: include versions with no known vulnerabilities in the results (default: false)
 
 **Example Request**
 ```json
@@ -196,88 +205,44 @@ Look up a package by name and optional version specifier to find which versions 
   "params": {
     "name": "lookup",
     "arguments": {
-      "name": "requests>=2.32.0",
-      "retain_passing": true
+      "name": "actions/download-artifact@v4.1.2",
+      "ecosystem": "gha"
     }
   }
 }
 ```
 
-**Example Response:**
+**Example Response (`structuredContent`)**
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "content": [],
-    "structuredContent": {
-      "package": "requests",
-      "versions": [
+  "ecosystem": "gha",
+  "package": "actions/download-artifact",
+  "versions": [
+    {
+      "version": "v4.1.2",
+      "vulnerabilities": [
         {
-          "version": "2.32.0",
-          "vulnerabilities": [
-            {
-              "cvss_score": 5.3,
-              "id": "GHSA-9hjg-9r4m-mvj7",
-              "severity": "(Medium):",
-              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
-            }
-          ],
-          "vulnerable": true
-        },
-        {
-          "version": "2.32.1",
-          "vulnerabilities": [
-            {
-              "cvss_score": 5.3,
-              "id": "GHSA-9hjg-9r4m-mvj7",
-              "severity": "(Medium):",
-              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
-            }
-          ],
-          "vulnerable": true
-        },
-        {
-          "version": "2.32.2",
-          "vulnerabilities": [
-            {
-              "cvss_score": 5.3,
-              "id": "GHSA-9hjg-9r4m-mvj7",
-              "severity": "(Medium):",
-              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
-            }
-          ],
-          "vulnerable": true
-        },
-        {
-          "version": "2.32.3",
-          "vulnerabilities": [
-            {
-              "cvss_score": 5.3,
-              "id": "GHSA-9hjg-9r4m-mvj7",
-              "severity": "(Medium):",
-              "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
-              "url": "https://osv.dev/vulnerability/GHSA-9hjg-9r4m-mvj7"
-            }
-          ],
-          "vulnerable": true
-        },
-        {
-          "version": "2.32.4",
-          "vulnerabilities": [],
-          "vulnerable": false
-        },
-        {
-          "version": "2.32.5",
-          "vulnerabilities": [],
-          "vulnerable": false
+          "cvss_score": 8.6,
+          "id": "GHSA-cxww-7g56-2vh6",
+          "severity": "High",
+          "summary": "@actions/download-artifact has an Arbitrary File Write via artifact extraction",
+          "url": "https://osv.dev/vulnerability/GHSA-cxww-7g56-2vh6"
         }
-      ]
-    },
-    "isError": false
-  }
+      ],
+      "vulnerable": true
+    }
+  ]
 }
 ```
+
+If some versions could not be checked against OSV, they are listed in an `unaudited` array; these are not known to be free of vulnerabilities.
+
+
+## Self-Hosting
+
+The server listens on port 8080 at `/mcp`. Environment variables:
+- `TENANT_SECRET`: when set, requests must carry it in the `X-Fetter-MCP-Internal` header
+- `MCP_ALLOWED_HOSTS`: comma-separated hostnames accepted in the `Host` header (DNS-rebinding protection); defaults to loopback and `mcp.fetter.io`. Use `*` to disable the check.
+- `RUST_LOG`: log filter (default `info,fetter_mcp=debug`)
+
+GitHub Actions and Swift lookups run `git ls-remote`, so `git` must be installed.
